@@ -10,7 +10,7 @@ This repository includes some pulsed neural network implementations for computer
 
 We first introduce different coding schemes, including direct coding, which is straightforward, and Poisson coding, which has more mathematical guarantees. In terms of implementation, we compared a PyTorch compatible SNN library on GitHub and an article from Nature Communications2022 that we reproduced. The experimental results show that the SNN PyTorch implementation is similar to RNN.
 
-You can get the source code for MNIST image classification in the direction of **ImageClassification**.
+You can get the source code for MNIST image classification in the direction of **ImageClassification**. The detailed report can get in https://zhuanlan.zhihu.com/p/558272145 (in Chinese).
 
 If you want to train the SNN model for image classification, run the following command.
 
