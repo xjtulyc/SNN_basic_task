@@ -138,9 +138,9 @@ else:
           target_list.extend(targets)
           # if i == num_iters:
           #   break
-      spk_list = torch.stack(spk_list).tolist()
-      target_list = torch.stack(target_list).tolist()
-      accuracy = np.mean((spk_list == target_list).detach().cpu().numpy())
+      spk_list = torch.stack(spk_list).cpu().numpy()
+      target_list = torch.stack(target_list).cpu().numpy()
+      accuracy = np.mean(spk_list == target_list)
       acc_hist.append(accuracy)
       # print(f"Accuracy: {acc * 100:.2f}%\n")
       tqdm.write(f"Accuracy: {accuracy * 100:.2f}%\n")
