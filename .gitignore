@@ -1,6 +1,6 @@
 LIF/data
 LIF/cache
 LIF/model
-LIF/*.csv
-LIF/*.mp4
+# LIF/*.csv
+# LIF/*.mp4
 LIF/*.html

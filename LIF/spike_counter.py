@@ -1,8 +1,7 @@
 import tonic
 
 dataset = tonic.datasets.NMNIST(save_to='./data', train=True)
-events, target = dataset[0]
-# tonic.utils.plot_event_grid(events)
+
 import tonic.transforms as transforms
 
 sensor_size = tonic.datasets.NMNIST.sensor_size
@@ -25,7 +24,8 @@ cached_trainset = DiskCachedDataset(trainset, cache_path='./cache/nmnist/train')
 cached_dataloader = DataLoader(cached_trainset)
 
 batch_size = 128
-trainloader = DataLoader(cached_trainset, batch_size=batch_size, collate_fn=tonic.collation.PadTensors())
+from torch.utils.data import DataLoader, SubsetRandomSampler
+import numpy as np
 
 def load_sample_batched():
     events, target = next(iter(cached_dataloader))
@@ -42,17 +42,16 @@ cached_trainset = DiskCachedDataset(trainset, transform=transform, cache_path='.
 cached_testset = DiskCachedDataset(testset, cache_path='./cache/nmnist/test')
 
 batch_size = 1
-from torch.utils.data import DataLoader, SubsetRandomSampler
-import numpy as np
+# trainloader = DataLoader(cached_trainset, batch_size=batch_size, collate_fn=tonic.collation.PadTensors(batch_first=False), shuffle=True)
 
 dataset_length = len(cached_trainset)
 indices = np.arange(0, dataset_length, 100)
 sampler = SubsetRandomSampler(indices)
 
 trainloader = DataLoader(cached_trainset, batch_size=batch_size, collate_fn=tonic.collation.PadTensors(batch_first=False), shuffle=False, sampler=sampler)
-# trainloader = DataLoader(cached_trainset, batch_size=batch_size, collate_fn=tonic.collation.PadTensors(batch_first=False), shuffle=True)
-print(len(trainloader))
 testloader = DataLoader(cached_testset, batch_size=batch_size, collate_fn=tonic.collation.PadTensors(batch_first=False))
+
+print(len(trainloader))
 
 import snntorch as snn
 from snntorch import surrogate
@@ -111,6 +110,33 @@ use_pretrained = False
 if os.path.exists('./model/nmnist.pth') and use_pretrained:
   net.load_state_dict(torch.load('./model/nmnist.pth'))
   print('Model loaded')
+  spk_list = []
+  target_list = []
+  for i, (data, targets) in tqdm(enumerate(iter(trainloader))):
+      data = data.to(device)
+      targets = targets.to(device)
+
+      net.eval()
+      spk_rec = forward_pass(net, data)
+      loss_val = loss_fn(spk_rec, targets)
+
+      # Store loss history for future plotting
+      loss_hist.append(loss_val.item())
+
+      # print(f"Epoch {epoch}, Iteration {i} \nTrain Loss: {loss_val.item():.2f}")
+
+      # acc = SF.accuracy_rate(spk_rec, targets)
+      _, idx = spk_rec.sum(dim=0).max(1)
+      spk_list.extend(idx)
+      target_list.extend(targets)
+      # if i == num_iters:
+      #   break
+  spk_list = torch.stack(spk_list).cpu().numpy()
+  target_list = torch.stack(target_list).cpu().numpy()
+  accuracy = np.mean(spk_list == target_list)
+  acc_hist.append(accuracy)
+  # print(f"Accuracy: {acc * 100:.2f}%\n")
+  tqdm.write(f"Accuracy: {accuracy * 100:.2f}%\n")
 else:
   # training loop
   for epoch in range(num_epochs):
@@ -132,6 +158,9 @@ else:
 
           # Store loss history for future plotting
           loss_hist.append(loss_val.item())
+
+          # print(f"Epoch {epoch}, Iteration {i} \nTrain Loss: {loss_val.item():.2f}")
+
           # acc = SF.accuracy_rate(spk_rec, targets)
           _, idx = spk_rec.sum(dim=0).max(1)
           spk_list.extend(idx)
@@ -173,7 +202,7 @@ plt.xlabel('Predicted')
 plt.ylabel('True')
 plt.title(f'Accuracy: {acc}')
 plt.savefig('./figures/nmnist_confusion_matrix.png')
-plt.show()
+# plt.show()
 
 import matplotlib.pyplot as plt
 
@@ -184,31 +213,43 @@ plt.title("Train Set Accuracy")
 plt.xlabel("Iteration")
 plt.ylabel("Accuracy")
 plt.savefig('./figures/nmnist_accuracy.png')
-plt.show()
+# plt.show()
 
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
 
 data_dict = {}
-import torch
-for data, target in tqdm(trainloader):
-  if target.item() in data_dict:
-    continue
-  data = torch.tensor(data)
-  data = data.to(device)
-  data_dict[target.item()] = data
-#   break
-  if len(data_dict) == 10:
-    break
-  
-for k, v in data_dict.items():
+
+# for data, target in tqdm(trainloader):
+#   if target.item() in data_dict:
+#     continue
+#   data_dict[target.item()] = data
+# #   break
+#   if len(data_dict) == 10:
+#     break
+# net = net.to('cpu')
+# net.eval()
+net.eval()
+for data, target in tqdm(iter(trainloader)):
+    if target.item() in data_dict:
+        continue
+    # data_dict[target.item()] = data
+    data =  data.to(device)
     fig, ax = plt.subplots(facecolor='w', figsize=(12, 7))
     labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+    k = target.item()
     print(f"The target label is: {labels[k]}")
-    data = v.to(device)
-    spk_rec = forward_pass(net, data)
+    # break
+    spk_rec = forward_pass(net, data).detach().cpu().numpy()
+    data_dict[target.item()] = spk_rec
+    if len(data_dict) == 10:
+        break
+    
+idx = 0
+for k, spk_rec in data_dict.items():
     # print(spk_rec.shape)
     # 创建一个空白图像，用于绘制动画的每一帧
     fig.canvas.draw()
@@ -219,8 +260,8 @@ for k, v in data_dict.items():
     frame_writable = frame.copy()
 
     # 获取脉冲计数数据
-    spike_counts = spk_rec[:, idx].detach().cpu()
-    df = pd.DataFrame(spike_counts.numpy())
+    spike_counts = spk_rec[:, idx]
+    df = pd.DataFrame(spike_counts)
     df.to_csv(f'spike_count_{k}.csv', index=False)
     # 创建颜色映射
     cmap = plt.get_cmap('viridis')
